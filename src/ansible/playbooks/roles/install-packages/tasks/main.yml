@@ -1,0 +1,22 @@
+---
+
+- name: Init repositories
+  ansible.builtin.include_tasks:
+    file: init-repos.yml
+    apply:
+      tags: repos
+  tags: repos
+
+- name: Install CRI
+  ansible.builtin.include_tasks:
+    file: install-cri.yml
+    apply:
+      tags: cri
+  tags: cri
+
+- name: Install kubectl
+  ansible.builtin.include_tasks:
+    file: install-kubectl.yml
+    apply:
+      tags: kubectl
+  tags: kubectl

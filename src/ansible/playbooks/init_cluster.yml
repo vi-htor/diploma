@@ -1,0 +1,14 @@
+---
+
+- name: Deploy k8s cluster
+  hosts: k8s
+  become: true
+  roles:
+    - role: prepare-hosts
+    - role: install-packages
+
+- name: Init k8s cluster
+  hosts: k8s-init-master
+  become: true
+  roles:
+    - role: init-cluster

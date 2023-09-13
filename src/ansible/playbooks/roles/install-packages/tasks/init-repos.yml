@@ -1,0 +1,41 @@
+---
+
+- name: Install required system packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
+      - gpg
+    state: present
+    update_cache: true
+    force_apt_get: true
+
+- name: Add keyrings dir
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/
+    state: directory
+    mode: '0755'
+
+- name: Add k8s apt Key
+  ansible.builtin.apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+    keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    state: present
+
+- name: Add K8s Repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+    filename: kubernetes
+    state: present
+
+- name: Add Docker apt key
+  ansible.builtin.apt_key:
+    url: "https://download.docker.com/linux/debian/gpg"
+    state: present
+
+- name: Add Docker repository.
+  ansible.builtin.apt_repository:
+    repo: "deb https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+    state: present

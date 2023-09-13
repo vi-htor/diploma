@@ -1,0 +1,37 @@
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  image: docker:24
+  services:
+  - docker:24-dind
+  tags:
+  - docker
+  script:
+    - cd src/test-app
+    - cat ${REGISTRY_KEY} | docker login --username json_key --password-stdin cr.yandex
+    - docker build -t cr.yandex/${REGISTRY_ID}/test:${CI_COMMIT_REF_SLUG} .
+    - docker push cr.yandex/${REGISTRY_ID}/test:${CI_COMMIT_REF_SLUG}
+
+deploy:
+  stage: deploy
+  only:
+    - tags
+  except:
+    - branches
+  image: 
+    name: bitnami/kubectl:latest
+    entrypoint: [""]
+  tags:
+  - docker
+  script:
+    - kubectl config set-cluster k8s --server="${K8S_SERVER}"
+    - kubectl config set clusters.k8s.certificate-authority-data ${K8S_CERTIFICATE_AUTHORITY_DATA}
+    - kubectl config set-credentials gitlab-user --token="${K8S_USER_TOKEN}"
+    - kubectl config set-context default --cluster=k8s --user=gitlab-user
+    - kubectl config use-context default
+    - sed -i "s/<VERSION>/${CI_COMMIT_REF_SLUG}/g" src/k8s/deploy.yaml
+    - sed -i "s/<REG_ID>/${REGISTRY_ID}/g" src/k8s/deploy.yaml
+    - kubectl apply -f src/k8s/deploy.yaml

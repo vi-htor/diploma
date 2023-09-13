@@ -1,0 +1,19 @@
+---
+
+- name: Init kubernetes cluster
+  ansible.builtin.shell: kubeadm init --pod-network-cidr={{ kubernetes_subnet }} > /root/kubeinit.log
+  register: output
+  changed_when: output.rc != 0
+
+- name: Create ~/.kube directory
+  ansible.builtin.file:
+    name: ~/.kube
+    mode: '0755'
+    state: directory
+
+- name: Populate .kube/config file
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: ~/.kube/config
+    mode: '0644'
+    remote_src: true

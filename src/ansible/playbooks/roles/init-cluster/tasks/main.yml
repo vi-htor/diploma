@@ -1,0 +1,15 @@
+---
+
+- name: Init cluster
+  ansible.builtin.include_tasks:
+    file: init-cluster.yml
+    apply:
+      tags: init
+  tags: init
+
+- name: Install CNI
+  ansible.builtin.include_tasks:
+    file: install-cni.yml
+    apply:
+      tags: cni
+  tags: cni

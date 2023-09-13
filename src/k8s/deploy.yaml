@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+  labels:
+    app: test-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: test-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 33%
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      containers:
+      - name: test-app
+        image: cr.yandex/<REG_ID>/test:<VERSION>
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http-port
+        resources:
+          requests:
+            cpu: "1m"
+            memory: "20Mi"
+          limits:
+            cpu: "10m"
+            memory: "20Mi"
+      imagePullSecrets:
+      - name: docker-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-svc
+spec:
+  ports:
+    - name: web
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+  selector:
+    app: test-app
+  type: NodePort

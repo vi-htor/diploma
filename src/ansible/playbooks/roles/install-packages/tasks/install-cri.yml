@@ -1,0 +1,40 @@
+---
+
+- name: Install containerd.io
+  ansible.builtin.apt:
+    name: containerd.io={{ cri_version }}
+    state: present
+    update_cache: true
+
+- name: Prevent containerd from being upgraded
+  ansible.builtin.dpkg_selections:
+    name: containerd.io
+    selection: hold
+
+- name: Create containerd directory
+  ansible.builtin.file:
+    name: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: Render containerd default config
+  ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+  register: output
+  changed_when: output.rc != 0
+
+- name: Enable SystemdCgroup for containerd
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: '^(\s*)SystemdCgroup(.*)$'
+    replace: '\1SystemdCgroup = true'
+  notify:
+    - Reload containerd
+
+- name: Start and enable containerd
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true
+
+- name: Force all notified handlers to run now
+  ansible.builtin.meta: flush_handlers

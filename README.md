@@ -1,92 +1,127 @@
-# diploma
+# Диплом
+  * [Цели:](#цели)
+  * [Этапы выполнения:](#этапы-выполнения)
+     * [Создание облачной инфраструктуры](#создание-облачной-инфраструктуры)
+     * [Создание Kubernetes кластера](#создание-kubernetes-кластера)
+     * [Создание тестового приложения](#создание-тестового-приложения)
+     * [Подготовка cистемы мониторинга и деплой приложения](#подготовка-cистемы-мониторинга-и-деплой-приложения)
+     * [Установка и настройка CI/CD](#установка-и-настройка-cicd)
 
+---
+## Цели
 
+1. Подготовить облачную инфраструктуру на базе облачного провайдера Яндекс.Облако.
+2. Запустить и сконфигурировать Kubernetes кластер.
+3. Установить и настроить систему мониторинга.
+4. Настроить и автоматизировать сборку тестового приложения с использованием Docker-контейнеров.
+5. Настроить CI для автоматической сборки и тестирования.
+6. Настроить CD для автоматического развёртывания приложения.
 
-## Getting started
+---
+## Этапы выполнения
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### Создание облачной инфраструктуры
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+1. Сервисный аккаунт создан в соответствии с требованиями яндекса, в роли `editor`:
+   <details>
+     <summary>Скрин</summary>
 
-## Add your files
+     ![sa](img/sa.png)
+   </details>
+2. Бэкенд выбрал альтернативным (S3 bucket внутри ЯО), так как не хотелось лезть в `tf cloud`, да и по опыту многие компании проедпочитают on permise решения внутри инфраструктуры. Конфиги в директории [tf-backend](src/tf-backend).
+3. Workspaces:
+   <details>
+     <summary>Terminal output</summary>
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+     ```
+     ➜ tf workspace list
+       default
+       prod
+     * stage     
+     ```
+   </details>
+4. VPC лежат в трёх доступных регионах, конфиги в директории [tf](src/tf).
+5. `terraform destroy` и `terraform apply` выполняются без проблем (с поправкой на то, что под окружения у меня создаются разные каталоги в облаке и их удаление занимает время).
 
-```
-cd existing_repo
-git remote add origin https://gitlab.com/dev-net-test/diploma.git
-git branch -M main
-git push -uf origin main
-```
+### Создание Kubernetes кластера
 
-## Integrate with your tools
+~~Как говорил один извесный в кругах русскоязычного kubernetes-комьюнити товарищ - `kubespray - го****а`, поэтому его не использовал.~~ 
 
-- [ ] [Set up project integrations](https://gitlab.com/dev-net-test/diploma/-/settings/integrations)
+Тут слегка интересный способ реализации - через `kubeadm` + `ansible`. `Terraform` создаёт `inventory` для `ansible`, а тот в свою очередь настраивает почти всё необходимое - остаётся только поправить сертификаты под `nat ip` `VPC` и добавить ноды в кластер через `kubeadm join` - и кластер + `cni` в виде `Weawe net`(не спрашивайте почему именно он) готов.
+Можно было бы автоматизировать и `join`, но это слегка проблематично и в этом нет необходимости.
 
-## Collaborate with your team
+`kubectl get pods -A`:
+  <details>
+    <summary>Terminal output</summary>
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+    ```
+    root@master-01:~# kubectl get pods -A
+    NAMESPACE     NAME                                READY   STATUS    RESTARTS        AGE
+    kube-system   coredns-5dd5756b68-85hnn            1/1     Running   0               6m50s
+    kube-system   coredns-5dd5756b68-97k8d            1/1     Running   0               6m50s
+    kube-system   etcd-master-01                      1/1     Running   0               7m2s
+    kube-system   kube-apiserver-master-01            1/1     Running   0               7m2s
+    kube-system   kube-controller-manager-master-01   1/1     Running   0               7m2s
+    kube-system   kube-proxy-556s8                    1/1     Running   0               32s
+    kube-system   kube-proxy-vbjbl                    1/1     Running   0               6m50s
+    kube-system   kube-proxy-vwqzj                    1/1     Running   0               33s
+    kube-system   kube-scheduler-master-01            1/1     Running   0               7m2s
+    kube-system   weave-net-kfqfg                     2/2     Running   1 (4m42s ago)   4m58s
+    kube-system   weave-net-qvtpn                     2/2     Running   0               32s
+    kube-system   weave-net-tn8sc                     2/2     Running   0               33s  
+    ```
+  </details>
 
-## Test and Deploy
+### Создание тестового приложения
 
-Use the built-in continuous integration in GitLab.
+Максимально простой путь, максимально простой способ: [Dockerfile](src/test-app/Dockerfile), собирает nginx и прокидывает в него статику, всё лежит в [test-app](src/test-app).
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+А, да, registry. Поднят в YCR через tf, конфиги в [tf-container-registry](src/tf-container-registry).
 
-***
+### Подготовка cистемы мониторинга и деплой приложения
 
-# Editing this README
+Воспользовался easy-way, ибо ну очень лениво в рамках диплома поднимать `qbec + altantis`, поэтому helm-чарты + деплойменты наше всё.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+  <details>
+    <summary>Детали установки стека мониторинга:</summary>
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+    ```bash
+    # Создаём отдельный ns для монитоинга
+    kubectl create namespace monitoring 
+    # Добавляем helm-репо для установки мониторинга
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    # Устанавливаем стек
+    helm install stable prometheus-community/kube-prometheus-stack --namespace=monitoring
+    #
+    # Для доступа из сети можно пойти двумя путями - я вырбал простой и отредактировал сервисы, добавив туда nodePort
+    #
+    kubectl edit svc stable-kube-prometheus-sta-prometheus
+    kubectl edit svc stable-grafana
+    # Проверяем работу
+    kubectl get pods
+    NAME                                                     READY   STATUS    RESTARTS   AGE
+    alertmanager-stable-kube-prometheus-sta-alertmanager-0   2/2     Running   0          2m55s
+    prometheus-stable-kube-prometheus-sta-prometheus-0       2/2     Running   0          2m55s
+    stable-grafana-58d569ffb9-svl8x                          3/3     Running   0          3m7s
+    stable-kube-prometheus-sta-operator-8599dfcf9-m6cbv      1/1     Running   0          3m7s
+    stable-kube-state-metrics-fc6fd8c55-mxdgt                1/1     Running   0          3m7s
+    stable-prometheus-node-exporter-9np8h                    1/1     Running   0          3m7s
+    stable-prometheus-node-exporter-sxq8f                    1/1     Running   0          3m7s
+    stable-prometheus-node-exporter-vtgnv                    1/1     Running   0          3m7s
+    ```
+  </details>
 
-## Name
-Choose a self-explaining name for your project.
+Креды от `grafana` admin/prom-operator.
+<details>
+  <summary>Скрин с графаны:</summary>
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+  ![grafana](img/grafana.png)
+</details>
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Но, есть нюанс, для доступа ко всем метрикам необходимо реконфигурировать авторизацию внутри кластера - что не совсем good, поэтому метрики собираются не все.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+### Установка и настройка CI/CD
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Реализовано, как и запрошено, на `Gitlab CI/CD` и public-раннерах.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Сам [.gitlab-ci.yml](.gitlab-ci.yml)

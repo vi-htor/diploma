@@ -1,0 +1,10 @@
+---
+
+- name: Sleep for 2 minutes before install CNI
+  ansible.builtin.wait_for:
+    timeout: 120
+
+- name: Install weave net
+  ansible.builtin.command: kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+  register: output
+  changed_when: output.rc != 0
